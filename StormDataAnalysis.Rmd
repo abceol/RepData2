@@ -81,19 +81,53 @@ title("Top Ten Causes of Injury")
 The relevant columns seem to be `PROPDMG`, `PROPDMGEXP`, `CROPDMG`, and `CROPDMGEXP`.
 
 ```{r echo = TRUE}
-levels(data$PROPDMGEXP)
+levels(data$PROPDMGEXP)         ## ""  "-" "?" "+" "0" "1" "2" "3" "4" "5" "6" "7" "8" "B" "h" "H" "K" "m" "M"
 levels(data$CROPDMGEXP)
-summary(data$CROPDMGEXP)
+summary(data$CROPDMGEXP)        ## ""  "?" "0" "2" "B" "k" "K" "m" "M"
 summary(data$PROPDMGEXP)
 ```
 
+We'll have a look at some of the records where `PROPDMGEXP` is 4, 5, 6, 7, or 8. If `PROPDMGEXP` is indeed an exponent these events would be pretty costly.
+
+```
+prop6 <- data[data$PROPDMGEXP == 4,]    ## 4 records
+prop7 <- data[data$PROPDMGEXP == 5,]    ## 28 records
+prop6 <- data[data$PROPDMGEXP == 6,]    ## 4 records
+prop7 <- data[data$PROPDMGEXP == 7,]    ## 5 records
+prop8 <- data[data$PROPDMGEXP == 8,]    ## 1 record
+as.character(prop4$REMARKS)
+as.character(prop5$REMARKS)
+as.character(prop6$REMARKS)
+as.character(prop7$REMARKS)
+as.character(prop8$REMARKS)
+```
+
+We see that
+
+We also see that, while we have removed the empty comments, some of the remarks are `"  "` (2 spaces), which is not helpful.
+
+The numeric values of `PROPDMGEXP` don't seem to have a consistant meaning.
+
+"h" or "H" seems to stand for hundreds; "k" or "K" for thousands; "m" or "M" for millions; and "B" for billions.
+
+#### How many events cause no property damage or no crop damage?
+
 ```{r echo = TRUE}
 prop0 <- data[data$PROPDMG == 0,]
-dim(prop0)
-
+dim(prop0)[1]/dim(data)[1] * 100        ## 73.5%
 crop0 <- data[data$CROPDMG == 0,]
-dim(prop0)
+dim(crop0)[1]/dim(data)[1] * 100        ## 97.5%
 ```
+
+```{r echo = TRUE}
+temp <- as.character(prop0$REMARKS)
+temp <- temp[temp!=""]
+temp[1:12]
+```
+
+Well, this means that we can't assume that `PROPDMG == 0` means no property damage. For example one of the `REMARKS` where `PROPDMG == 0` explicitly states "Damage to homes and businesses was widespread." Presumably the data for crop damage is similarly flaky.
+
+But we can only deal with the data we have. We just need to bear in mind that it is not fully accurate or complete.
 
 ----
 
