@@ -1,0 +1,230 @@
+---
+title: "Exploratory analysis of storm events"
+author: "I Carter (Coursera)"
+output: 
+  html_document:
+    keep_md: true
+    toc: true
+---
+
+## Synopsis
+
+This file contains my Exploratory Analysis for the second peer reviewed project.
+
+## Exploratory Analysis
+
+### Read in dataset
+
+```{r echo = TRUE}
+bz <- bzfile("repdata_data_StormData.csv.bz2", "r")
+data <- read.csv(bz)
+close(bz)
+```
+
+### Take a first look at dataset
+
+```{r echo = TRUE}
+dim(data)       ## 902297 records, 37 columns
+str(data)
+colnames(data)
+```
+
+----
+
+### Looking at events per state
+
+#### Mystery States
+
+```{r echo = TRUE}
+str(data$STATE)                                 ## 72 levels???
+temp <- levels(data$STATE) %in% state.abb       ## which are not in state.abb?
+levels(data$STATE)[!temp]                       ## 22 mystery state codes...
+```
+
+Mystery states turned out to be places like Guam, as a look at `BGN_LOCATI`, `STATEOFFIC`, or `COUNTYNAME` shows (`head(data[data$STATE=="GU",])`).
+
+#### How many events for the non-standard state codes?
+
+```{r echo = TRUE}
+states <- summary(data$STATE)
+states[levels(data$STATE)[!temp]]     ## look at the 22 mystery states
+other <- sum(states[levels(data$STATE)[!temp]])
+other                                 ## 19111
+other/sum(states) * 100               ##
+```
+
+#### Which State has had the most events?
+
+```{r echo = TRUE}
+max(states)                           ## 83728
+which.max(states)                     ## Texas (TX, 63)
+sum(states["TX"])/sum(states) * 100   ## 
+```
+
+----
+
+### Looking at dates
+
+#### Do all the dates "play nicely"?
+
+I.e. does `POSIXlt()` work OK with all the dates?
+
+```{r echo = TRUE}
+sum(is.na(as.POSIXlt(levels(data$BGN_DATE), format="%m/%d/%Y")))        ## 0
+sum(is.na(as.POSIXlt(levels(data$END_DATE), format="%m/%d/%Y")))        ## 1
+```
+
+#### A Closer Look at End Dates
+
+```{r echo = TRUE}
+str(data$END_DATE)      ## some of the end dates are missing values (i.e. "")
+sum(data$END_DATE == "")                                ## 243411 missing values
+sum(data$END_DATE == "")/length(data$END_DATE) * 100    ## about 27%
+```
+
+`END_DATE` data are very incomplete.
+
+#### Range of dates
+
+```{r echo = TRUE}
+min(as.POSIXlt(levels(data$BGN_DATE), format="%m/%d/%Y"))               ## "1950-01-03 GMT"
+max(as.POSIXlt(levels(data$BGN_DATE), format="%m/%d/%Y"))               ## "2011-11-30 GMT"
+min(as.POSIXlt(levels(data$END_DATE), format="%m/%d/%Y"), na.rm=TRUE)   ## "1986-04-10 BST"
+max(as.POSIXlt(levels(data$END_DATE), format="%m/%d/%Y"), na.rm=TRUE)   ## "2011-11-30 GMT"
+```
+
+So begin dates go from January 1950 to the end of November 2011, whereas end dates only start in April 1986.
+
+----
+
+### Numeric values of `PROPDMGEXP`
+
+We'll have a look at some of the records where `PROPDMGEXP` is 4, 5, 6, 7, or 8. If `PROPDMGEXP` is indeed an exponent these events would be pretty costly.
+
+```{r echo = TRUE}
+prop4 <- data[data$PROPDMGEXP == 4,]    ## 4 records
+prop5 <- data[data$PROPDMGEXP == 5,]    ## 28 records
+prop6 <- data[data$PROPDMGEXP == 6,]    ## 4 records
+prop7 <- data[data$PROPDMGEXP == 7,]    ## 5 records
+prop8 <- data[data$PROPDMGEXP == 8,]    ## 1 record
+as.character(prop4$REMARKS)
+as.character(prop5$REMARKS)
+as.character(prop6$REMARKS)
+as.character(prop7$REMARKS)
+as.character(prop8$REMARKS)
+```
+
+#### Strange data in `prop5`
+
+We see that, for example, `as.character(prop5$REMARKS)[11]` says that the total damage (from lightning striking a house) was estimated to be €3500, but while `prop5$PROPDMG` is indeed 3, the exponent should be 3 also, not 5, so this is 2 orders of magnitude wrong.
+
+Other examples of damage estimates that couldn't possibly be right (from `prop5`) include 22 ("Several homes and several hundered vehicle were damaged. ") and 24, where the awning of a shopping center and a large section of an hotel's roof was torn off. These both have `PROPDMG` set to 0, obviously wrong.
+
+"It took more than 100 firefighters from 19 communities many hours to extinguish a fire started by lightning which destroyed a large barn at a dairy farm in Westport." However `PROPDMG` here is only 0.2, with `PROPDMGEXP == 5`. I simply cannot believe the damage described is only $20,000.
+
+We also see that, while we have removed the empty comments, some of the remarks are `"  "` (2 spaces), which is not helpful.
+
+#### Strange data in `prop7` and `prop8`
+
+In the first event the police station roof and radio tower were bady damaged, and some trees were uprooted. But with `PROPDMG` of 14 and `PROPDMGEXP` of 7, I can't believe that this damage cost $140 million.
+
+The one record ("Several homes and several hundered vehicle were damaged.") with `PROPDMGEXP == 8` has `PROPDMG` of 0.
+
+#### More exploration of `PROPDMGEXP`
+
+```{r echo = TRUE}
+## Get all the records with PROPDMGEXP of 0 to 8
+prop_num <- data[data$PROPDMGEXP %in% 0:8,]
+temp <- summary(prop_num$EVTYPE)
+temp[temp!=0]                           ## print out a table of event types
+dim(temp)[1] / dim(prop_num)[1] * 100
+## We look at the percentage of "THUNDERSTORM WINDS" in the entire dataset
+temp <- data[data$EVTYPE=="THUNDERSTORM WINDS",]
+dim(temp)[1]/dim(data)[1] * 100         ## only 2.3%
+```
+
+we see `"THUNDERSTORM WINDS"` are highly over-represented (64%) in the data that has a numeric `PROPDMGEXP`, compared to 2.3% in the full dataset.
+
+Maybe we would find more patterns if we looked for them...
+
+#### Conclusion
+
+We conclude that the numeric values of `PROPDMGEXP` don't seem to have a consistant meaning.
+
+----
+
+### Records where `PROPDMG == 0`
+
+#### How many events cause no property damage or no crop damage?
+
+```{r echo = TRUE}
+prop0 <- data[data$PROPDMG == 0,]
+dim(prop0)[1]/dim(data)[1] * 100        ## 73.5%
+crop0 <- data[data$CROPDMG == 0,]
+dim(crop0)[1]/dim(data)[1] * 100        ## 97.5%
+```
+
+```{r echo = TRUE}
+temp <- as.character(prop0$REMARKS)
+temp <- temp[temp!=""]
+temp[1:12]
+```
+
+Well, this means that we can't assume that `PROPDMG == 0` means no property damage. For example one of the `REMARKS` where `PROPDMG == 0` explicitly states "Damage to homes and businesses was widespread." Presumably the data for crop damage is similarly flaky.
+
+But we can only deal with the data we have. We just need to bear in mind that it is not fully accurate or complete.
+
+----
+
+### `usmap`
+
+```{r echo = TRUE}
+library(usmap)
+library(ggplot2)
+```
+
+#### Everything goes wrong in Texas...
+
+```{r echo = TRUE}
+temp <- summary(data$STATE)
+temp <- temp[state.abb]
+temp <- data.frame(state=names(temp), events=as.numeric(temp))
+plot_usmap(data = temp, values="events", color = "red") +
+    scale_fill_continuous(low="green", high="red",
+        name = "# Events", label = scales::comma) + 
+    theme(legend.position = "right")
+```
+
+#### One county seems more dangerous than the others in Arkansas...
+
+```{r echo = TRUE}
+arkansas <- data[data$STATE=="AR",]
+## ar_counties <- levels(as.factor(arkansas$COUNTY))
+ar_counties <- format(arkansas$COUNTY, width=3)
+ar_counties <- sapply(ar_counties, function(x) {gsub(" ", "0", x)} )
+arkansas$COUNTY <- sapply(ar_counties, function(x) {paste("05", x, sep="")})
+test <- summary(as.factor(arkansas$COUNTY))
+test <- data.frame(fips=names(test), events=as.numeric(test))
+plot_usmap(data = test, values="events", color = "red",
+    include=test$fips)
+```
+
+#### Tornados in Texas
+
+```{r echo = TRUE}
+tornado <- data[grep("TORNADO", data$EVTYPE),]
+dim(tornado)[1] / dim(data)[1] * 100                    ## 6.73% nationally
+tornado_tx <- subset(tornado, STATE=="TX")
+dim(tornado_tx)[1] / sum(data$STATE=="TX") * 100        ## 9.90% in TX
+tx_counties <- format(tornado_tx$COUNTY, width=3)
+tx_counties <- sapply(tx_counties, function(x) {gsub(" ", "0", x)} )
+tornado_tx$COUNTY <- sapply(tx_counties, function(x) {paste("48", x, sep="")})
+test <- summary(as.factor(tornado_tx$COUNTY))
+test <- data.frame(fips=names(test), events=as.numeric(test))
+plot_usmap("counties", data = test, values="events", color = "red",
+    include = "TX")
+```
+
+----
+
+This document was processed on: `r Sys.Date()`.

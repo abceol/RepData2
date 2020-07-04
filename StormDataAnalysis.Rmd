@@ -9,13 +9,13 @@ output:
 
 ## Synopsis
 
-In this project I carried out an analysis of the U.S. National Oceanic and Atmospheric Administration's (NOAA) Storm Database. I recorded my exploratory analysis in `ExploratoryAnalysis.Rmd`.
+In this project I carried out an analysis of the U.S. National Oceanic and Atmospheric Administration's (NOAA) Storm Database. I recorded my exploratory analysis in `ExploratoryAnalysis.Rmd`. My goals were to discover which event types were most costly, firstly in terms of human life and health, and then in dollar terms.
 
 ----
 
 ## Data Processing
 
-### Read in dataset
+### Read in the dataset
 
 ```{r echo = TRUE}
 bz <- bzfile("repdata_data_StormData.csv.bz2", "r")
@@ -72,6 +72,8 @@ barplot(injurious[injurious_indices[1:10]], axisnames=FALSE,
 title("Top Ten Causes of Injury")
 ```
 
+To improve our analysis we might take into account that some `EVTYPE`s seem to be synonyms of each other (e.g. "THUNDERSTORM WINDS", "THUNDERSTORM WIND", "THUNDERSTORM WINDSS").
+
 ----
 
 ### Costliness
@@ -87,47 +89,75 @@ summary(data$CROPDMGEXP)        ## ""  "?" "0" "2" "B" "k" "K" "m" "M"
 summary(data$PROPDMGEXP)
 ```
 
-We'll have a look at some of the records where `PROPDMGEXP` is 4, 5, 6, 7, or 8. If `PROPDMGEXP` is indeed an exponent these events would be pretty costly.
-
-```
-prop6 <- data[data$PROPDMGEXP == 4,]    ## 4 records
-prop7 <- data[data$PROPDMGEXP == 5,]    ## 28 records
-prop6 <- data[data$PROPDMGEXP == 6,]    ## 4 records
-prop7 <- data[data$PROPDMGEXP == 7,]    ## 5 records
-prop8 <- data[data$PROPDMGEXP == 8,]    ## 1 record
-as.character(prop4$REMARKS)
-as.character(prop5$REMARKS)
-as.character(prop6$REMARKS)
-as.character(prop7$REMARKS)
-as.character(prop8$REMARKS)
-```
-
-We see that
-
-We also see that, while we have removed the empty comments, some of the remarks are `"  "` (2 spaces), which is not helpful.
-
-The numeric values of `PROPDMGEXP` don't seem to have a consistant meaning.
-
 "h" or "H" seems to stand for hundreds; "k" or "K" for thousands; "m" or "M" for millions; and "B" for billions.
 
-#### How many events cause no property damage or no crop damage?
+***Please see Exploratory Analysis file for an examination of `PROPDMG` & `PROPDMGEXP`.*** My conclusion is that the numeric values of `PROPDMGEXP`, and indeed of `PROPDMG`, are not very reliable. However we will use the data as-is, bearing in mind that some of it may be wrong.
+
+First here is a helper function to convert the factor levels to integer multipliers:
 
 ```{r echo = TRUE}
-prop0 <- data[data$PROPDMG == 0,]
-dim(prop0)[1]/dim(data)[1] * 100        ## 73.5%
-crop0 <- data[data$CROPDMG == 0,]
-dim(crop0)[1]/dim(data)[1] * 100        ## 97.5%
+getMultiplier <- function(exp) {
+    if(length(grep("[0-8]", exp)) > 0) {
+        exp <- 10^as.numeric(exp)
+    }
+    else {
+        exp <- toupper(exp)
+        exp <- switch(exp,
+            B = 1000000000,
+            M = 1000000,
+            K = 1000,
+            H = 100,
+            1)
+    }
+    exp
+}
 ```
+
+Now we make two new columns to record property and crop damage figures. We first figure out the multiplier, e.g. 100, 1000, etc. and then we multiply it by the figure given in `PROPDMG` and `CROPDMG`.
+
+I reckon sapplying on just the levels is more efficient, rather than converting the factor to a character vector, and then running sapply to get the multipliers.
 
 ```{r echo = TRUE}
-temp <- as.character(prop0$REMARKS)
-temp <- temp[temp!=""]
-temp[1:12]
+data$PROPDMGTOT <- data$PROPDMGEXP
+temp <- levels(data$PROPDMGEXP)
+levels(data$PROPDMGTOT) <- sapply(temp, getMultiplier)
+data$PROPDMGTOT <- levels(data$PROPDMGTOT)[data$PROPDMGTOT]
+data$PROPDMGTOT <- as.numeric(data$PROPDMGTOT) * data$PROPDMG
+
+data$CROPDMGTOT <- data$CROPDMGEXP
+temp <- levels(data$CROPDMGEXP)
+levels(data$CROPDMGTOT) <- sapply(temp, getMultiplier)
+data$CROPDMGTOT <- levels(data$CROPDMGTOT)[data$CROPDMGTOT]
+data$CROPDMGTOT <- as.numeric(data$CROPDMGTOT) * data$CROPDMG
 ```
 
-Well, this means that we can't assume that `PROPDMG == 0` means no property damage. For example one of the `REMARKS` where `PROPDMG == 0` explicitly states "Damage to homes and businesses was widespread." Presumably the data for crop damage is similarly flaky.
+***Now we figure out the worst `EVTYPE`s, similar to the code we used for injuries and fatalities.***
 
-But we can only deal with the data we have. We just need to bear in mind that it is not fully accurate or complete.
+### The Most Costly Event Types
+
+```{r echo = TRUE}
+property <- tapply(data$PROPDMGTOT, data$EVTYPE, sum)
+property_indices <- order(property, decreasing=TRUE)
+crop <- tapply(data$CROPDMGTOT, data$EVTYPE, sum)
+crop_indices <- order(crop, decreasing=TRUE)
+
+par(mfrow=c(2, 1), cex=0.7)
+barplot(property[property_indices[1:10]], axisnames=FALSE,
+    col = hcl.colors(10, palette="Spectral"), legend=TRUE)
+title("Top Ten Costliest Event Types (Property Damage)")
+barplot(crop[crop_indices[1:10]], axisnames=FALSE,
+    col = hcl.colors(10, palette="Spectral"), legend=TRUE)
+title("Top Ten Costliest Event Types (Crop Damage)")
+```
+
+#### How much damage in total?
+
+```{r echo = TRUE}
+total_propdmg <- sum(data$PROPDMGTOT)
+prettyNum(total_propdmg, big.mark=",")  ## 428 billion
+total_cropdmg <- sum(data$CROPDMGTOT)
+prettyNum(total_cropdmg, big.mark=",")  ## 49 billion
+```
 
 ----
 
@@ -139,9 +169,17 @@ The questions that need answers are:
 
 Across the United States, which types of events (as indicated in the `EVTYPE` variable) are most harmful with respect to population health?
 
+***Answer: Tornados, by far.***
+
+However this likely varies considerably by region, something that was not addressed in my analysis.
+
 ### Economic Consequences
 
 Across the United States, which types of events have the greatest economic consequences?
+
+***Answer: Floods overall, although Drought is a more serious problem where crops are concerned.***
+
+Crop damage is about an order of magnitude less costly than property damage.
 
 ----
 
