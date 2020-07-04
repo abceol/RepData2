@@ -4,8 +4,16 @@ author: "I Carter (Coursera)"
 output: 
   html_document:
     keep_md: true
+    fig_width: 6.75
+    fig_height: 6.75
     toc: true
 ---
+
+```{r opts, echo = FALSE}
+knitr::opts_chunk$set(
+  fig.path = "figure/"
+)
+```
 
 ## Synopsis
 
